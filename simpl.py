@@ -18,12 +18,15 @@ term_group.add_argument("-F", "--term-file", help="A file containing the term st
 
 parser.add_argument("-t", "--timeout", default="1", 
                     help="Timeout for the Twee prover (default: 1 second).")
+parser.add_argument("-f", "--no-flatten", action="store_false",
+                    help="Prevents flattening nested functions in the goal term.")
 
 args = parser.parse_args()
 
 # 2. Get the rule file and timeout from parsed args
 rule_file = args.rule_file
 timeout = args.timeout
+flatten = args.no_flatten
 
 # 3. Get the term string from either --term or --term-file
 term_string = ""
@@ -125,8 +128,10 @@ def collect_subterms(t, idx):
     goals.append(f'cnf(goal,axiom, {name} = {subterm}).')
     return current_idx, name
 
-# goals.append('cnf(goal,axiom, goal0 = '+str(term)+').')
-collect_subterms(term, 0)
+if flatten:
+    collect_subterms(term, 0)
+else:
+    goals.append('cnf(goal,axiom, goal0 = '+str(term)+').')
 
 goals.append('cnf(goal,conjecture, zero = one).')
 print("Generated goals:")
