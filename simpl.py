@@ -208,6 +208,20 @@ for lhs, rhs in subst_set:
         heapq.heappush(queue, (len(lhs), rhs, lhs))
     else:
         remaining.add((lhs, rhs))
+    
+def replace(term_str, old, new):
+    term,rest = parse_formula(term_str)
+    assert rest == ""
+    new_term,rest = parse_formula(new)
+    assert rest == ""
+    def replace_rec(t):
+        if t.id == old and len(t.args) == 0:
+            return new_term
+        else:
+            new_args = [replace_rec(arg) for arg in t.args]
+            return Formula(t.id, new_args)
+    replaced = replace_rec(term)
+    return str(replaced)
         
 while queue:
     _, g, t = heapq.heappop(queue)
@@ -221,8 +235,10 @@ while queue:
         if lhs == g or rhs == g:
             # we already found a smaller term for this goal
             continue
-        new_lhs = lhs.replace(g, t)
-        new_rhs = rhs.replace(g, t)
+        # new_lhs = lhs.replace(g, t)
+        # new_rhs = rhs.replace(g, t)
+        new_lhs = replace(lhs, g, t)
+        new_rhs = replace(rhs, g, t)
         if not pattern.search(new_rhs):
             heapq.heappush(queue, (len(new_rhs), new_lhs, new_rhs))
         elif not pattern.search(new_lhs):
