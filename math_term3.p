@@ -1,0 +1,37 @@
+cnf(1, axiom, (add(A,B) = add(B,A))).
+cnf(2, axiom, (mul(A,B) = mul(B,A))).
+cnf(3, axiom, (add(A,add(B,C)) = add(add(A,B),C))).
+cnf(4, axiom, (mul(A,mul(B,C)) = mul(mul(A,B),C))).
+cnf(5, axiom, (sub(A,B) = add(A,mul(minusone,B)))).
+cnf(6, axiom, (div(A,B) = mul(A,pow(B,minusone)))).
+cnf(7, axiom, (add(A,zero) = A)).
+cnf(8, axiom, (mul(X,zero) = zero)).
+cnf(9, axiom, (mul(X,one) = X)).
+cnf(10, axiom, (A = add(A,zero))).
+cnf(11, axiom, (X = mul(X,one))).
+cnf(12, axiom, (sub(A,A) = zero)).
+cnf(13, axiom, (div(A,A) = if(eq(A,zero),div(A,A),one))).
+cnf(14, axiom, (mul(A,add(B,C)) = add(mul(A,B),mul(A,C)))).
+cnf(15, axiom, (add(mul(A,B),mul(A,C)) = mul(A,add(B,C)))).
+cnf(16, axiom, (mul(pow(A,B),pow(A,C)) = pow(A,add(B,C)))).
+cnf(17, axiom, (pow(X,zero) = if(eq(X,zero),pow(X,zero),one))).
+cnf(18, axiom, (pow(X,one) = X)).
+cnf(19, axiom, (pow(X,two) = mul(X,X))).
+cnf(20, axiom, (pow(X,minusone) = if(eq(X,zero),pow(X,minusone),div(one,X)))).
+cnf(21, axiom, (mul(X,div(one,X)) = if(eq(X,zero),mul(X,div(one,X)),one))).
+cnf(22, axiom, (i(one,X) = X)).
+cnf(23, axiom, (i(cos(X),X) = sin(X))).
+cnf(24, axiom, (i(sin(X),X) = mul(minusone,cos(X)))).
+cnf(25, axiom, (i(add(F,G),X) = add(i(F,X),i(G,X)))).
+cnf(26, axiom, (i(sub(F,G),X) = sub(i(F,X),i(G,X)))).
+cnf(27, axiom, (if(true,Y,Z) = Y)).
+cnf(28, axiom, (if(false,Y,Z) = Z)).
+cnf(29, axiom, (eq(X,X) = true)).
+cnf(30, axiom, (eq(a,zero) = false)).
+cnf(32, axiom, (eq(y,zero) = false)).
+cnf(32, axiom, (eq(b,zero) = false)).
+cnf(33, axiom, (eq(one,zero) = false)).
+
+
+% cnf(goal, axiom, goal123 = mul(b, add(zero, mul(x, add(add(add(mul(x, one), sub(pow(y, zero), div(mul(zero, z), pow(a, one)))), div(pow(pow(b, one), one), mul(one, one))), div(mul(d, zero), pow(e, one))))))).
+% cnf(goal, conjecture, zero = one).
