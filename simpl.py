@@ -164,12 +164,15 @@ for line in lines:
     #     continue
     if "goal" not in line:
         continue
+    # remove "\d+\. " at start of line
+    line = re.sub(r"^\s*\d+\.\s+", "", line)
     if "<->" in line:
         lhs, rhs = line.split(" <-> ")
     elif "->" in line:
         lhs, rhs = line.split(" -> ")
     else:
         continue
+    
     lhs = lhs.strip()
     rhs = rhs.strip()
     if lhs == rhs:
