@@ -128,7 +128,7 @@ def collect_subterms(t, idx):
 # goals.append('cnf(goal,axiom, goal0 = '+str(term)+').')
 collect_subterms(term, 0)
 
-goals.append('cnf(goal,conjecture, 0 = 1).')
+goals.append('cnf(goal,conjecture, zero = one).')
 print("Generated goals:")
 for g in goals:
     print(" ", g)
@@ -204,6 +204,9 @@ for lhs, rhs in subst_set:
 while queue:
     _, g, t = heapq.heappop(queue)
     print(f"Resolving {g} -> {t}")
+    if g in subst:
+        # we already found a smaller term for this goal
+        continue
     subst[g] = t
     new_remaining = set()
     for lhs, rhs in remaining:
