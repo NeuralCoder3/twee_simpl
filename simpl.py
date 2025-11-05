@@ -72,7 +72,15 @@ class Formula:
     
     def __hash__(self):
         return hash((self.id, tuple(self.args)))
+    
+    def size(self):
+        if len(self.args) == 0:
+            return 1
+        else:
+            return 1 + sum(arg.size() for arg in self.args)
         
+    def __lt__(self, other):
+        return str(self) < str(other)
 
 def parse_formula(s):
     s = s.replace(" ","")
@@ -111,11 +119,11 @@ def collect_subterms(t, idx):
     goals.append(f'cnf(goal,axiom, {name} = {subterm}).')
     return current_idx, name
 
-def replace(term_str, old, new):
-    term,rest = parse_formula(term_str)
-    assert rest == ""
-    new_term,rest = parse_formula(new)
-    assert rest == ""
+def replace(term, old, new_term):
+    # term,rest = parse_formula(term_str)
+    # assert rest == ""
+    # new_term,rest = parse_formula(new)
+    # assert rest == ""
     def replace_rec(t):
         if t.id == old and len(t.args) == 0:
             return new_term
@@ -123,7 +131,8 @@ def replace(term_str, old, new):
             new_args = [replace_rec(arg) for arg in t.args]
             return Formula(t.id, new_args)
     replaced = replace_rec(term)
-    return str(replaced)
+    # return str(replaced)
+    return replaced
 
 # -----------------------------------------------------------------
 # Main script logic
@@ -282,6 +291,24 @@ else:
 # -----------------------------------------------------------------
 # Resolver logic (common to both paths)
 # -----------------------------------------------------------------
+
+def is_ground(term):
+    if len(term.args) == 0:
+        return not pattern.match(term.id)
+    return all(is_ground(arg) for arg in term.args)
+
+def is_goal(term):
+    return len(term.args) == 0 and pattern.match(term.id)
+
+# filter recursive ones
+new_subst_set = []
+for lhs, rhs in subst_set:
+    if (pattern.match(lhs) and lhs in str(rhs)) or (pattern.match(rhs) and rhs in str(lhs)):
+        # print(f"Skipping recursive substitution: {lhs} -> {rhs}")
+        continue
+    new_subst_set.append((lhs, rhs))
+subst_set = new_subst_set
+# sys.exit(0)
     
 print("\nSubstitutions found:")
 for lhs, rhs in subst_set:
@@ -295,19 +322,31 @@ for lhs, rhs in subst_set:
 # start with leaf nodes in priorityqueue (sorted by size)
 # replace in all other nodes, continue
 
+new_subst_set = []
+for lhs_str, rhs_str in subst_set:
+    lhs, rest = parse_formula(lhs_str)
+    assert rest == ""
+    rhs, rest = parse_formula(rhs_str)
+    assert rest == ""
+    new_subst_set.append((lhs, rhs))
+subst_set = new_subst_set
+    
 queue = []
 subst = {}
 remaining = set()
 for lhs, rhs in subst_set:
-    if not pattern.search(rhs):
-        heapq.heappush(queue, (len(rhs), lhs, rhs))
-    elif not pattern.search(lhs):
-        heapq.heappush(queue, (len(lhs), rhs, lhs))
+    if is_ground(rhs):
+        assert is_goal(lhs)
+        heapq.heappush(queue, (rhs.size(), lhs.id, rhs))
+    elif is_ground(lhs):
+        assert is_goal(rhs)
+        heapq.heappush(queue, (lhs.size(), rhs.id, lhs))
     else:
         remaining.add((lhs, rhs))
         
 while queue:
     _, g, t = heapq.heappop(queue)
+    assert is_ground(t)
     if g in subst:
         # we already found a smaller term for this goal
         continue
@@ -324,10 +363,24 @@ while queue:
         new_rhs = replace(rhs, g, t)
         # if (lhs != new_lhs or rhs != new_rhs) and (g == "goal80"):
         #     print(f"  Updated: {lhs} -> {rhs}  to  {new_lhs} -> {new_rhs}")
-        if not pattern.search(new_rhs):
-            heapq.heappush(queue, (len(new_rhs), new_lhs, new_rhs))
-        elif not pattern.search(new_lhs):
-            heapq.heappush(queue, (len(new_lhs), new_rhs, new_lhs))
+        if is_ground(new_rhs):
+            if is_goal(new_lhs):
+                heapq.heappush(queue, (new_rhs.size(), new_lhs.id, new_rhs))
+            else:
+                # we have a ground term and a non-goal term => replaced goal with ground term
+                # we might have replaced the goal side => other side not necessarily ground
+                # if not is_ground(new_lhs):
+                #     print(f"Warning: Replaced goal with ground term but LHS is not ground: {new_lhs} -> {new_rhs}")
+                #     print(f"Was before: {lhs} -> {rhs}, replaced {g} with {t}")
+                # assert is_ground(new_lhs)
+                continue
+        elif is_ground(new_lhs):
+            if is_goal(new_rhs):
+                heapq.heappush(queue, (new_lhs.size(), new_rhs.id, new_lhs))
+            else:
+                # we have a ground term and a non-goal term => replaced goal with ground term
+                # assert is_ground(new_rhs)
+                continue
         else:
             new_remaining.add((new_lhs, new_rhs))
     remaining = new_remaining
