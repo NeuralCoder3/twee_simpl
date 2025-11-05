@@ -35,3 +35,6 @@ cnf(33, axiom, (eq(one,zero) = false)).
 
 % cnf(goal, axiom, goal123 = mul(b, add(zero, mul(x, add(add(add(mul(x, one), sub(pow(y, zero), div(mul(zero, z), pow(a, one)))), div(pow(pow(b, one), one), mul(one, one))), div(mul(d, zero), pow(e, one))))))).
 % cnf(goal, conjecture, zero = one).
+% run with:
+% python simpl.py -T "mul(b, add(zero, mul(x, add(add(add(mul(x, one), sub(pow(y, zero), div(mul(zero, z), pow(a, one)))), div(pow(pow(b, one), one), mul(one, one))), div(mul(d, zero), pow(e, one))))))" -t 10 math_term3.p | tee log.txt
+

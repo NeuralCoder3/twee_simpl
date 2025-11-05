@@ -124,15 +124,25 @@ def replace(term, old, new_term):
     # assert rest == ""
     # new_term,rest = parse_formula(new)
     # assert rest == ""
-    def replace_rec(t):
+    
+    # def replace_rec(t):
+    #     if t.id == old and len(t.args) == 0:
+    #         return new_term
+    #     else:
+    #         new_args = [replace_rec(arg) for arg in t.args]
+    #         return Formula(t.id, new_args)
+    # replaced = replace_rec(term)
+    # return str(replaced)
+    # return replaced
+    
+    def replace_rec_inline(t):
         if t.id == old and len(t.args) == 0:
             return new_term
         else:
-            new_args = [replace_rec(arg) for arg in t.args]
-            return Formula(t.id, new_args)
-    replaced = replace_rec(term)
-    # return str(replaced)
-    return replaced
+            for i in range(len(t.args)):
+                t.args[i] = replace_rec_inline(t.args[i])
+            return t
+    return replace_rec_inline(term)
 
 # -----------------------------------------------------------------
 # Main script logic
