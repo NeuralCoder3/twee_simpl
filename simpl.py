@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # import os
 import re
 import sys
@@ -9,43 +11,36 @@ import heapq
 import argparse
 
 # 1. Setup command-line argument parser
-parser = argparse.ArgumentParser(description="Simplify a mathematical term using Twee.")
-parser.add_argument("rule_file", help="The .p file containing the rewrite rules.")
+parser = argparse.ArgumentParser(description="Simplify a mathematical term using Twee or a substitution file.")
 
-term_group = parser.add_mutually_exclusive_group(required=True)
-term_group.add_argument("-T", "--term", help="The term string to simplify.")
-term_group.add_argument("-F", "--term-file", help="A file containing the term string to simplify.")
+# Add -s first, as it changes the requirements
+parser.add_argument("-s", "--substitution-file", 
+                    help="A file containing pre-computed substitutions. If given, rule_file and term args are ignored.")
+
+parser.add_argument("rule_file", nargs='?', default=None, 
+                    help="The .p file containing the rewrite rules (required if -s is not used).")
+
+term_group = parser.add_mutually_exclusive_group(required=False)
+term_group.add_argument("-T", "--term", 
+                        help="The term string to simplify (required if -s is not used).")
+term_group.add_argument("-F", "--term-file", 
+                        help="A file containing the term string to simplify (required if -s is not used).")
 
 parser.add_argument("-t", "--timeout", default="1", 
-                    help="Timeout for the Twee prover (default: 1 second).")
+                    help="Timeout for the Twee prover (default: 1 second, ignored if -s is used).")
 parser.add_argument("-f", "--no-flatten", action="store_false",
-                    help="Prevents flattening nested functions in the goal term.")
+                    help="Prevents flattening nested functions in the goal term (ignored if -s is used).")
 
 args = parser.parse_args()
 
-# 2. Get the rule file and timeout from parsed args
-rule_file = args.rule_file
-timeout = args.timeout
-flatten = args.no_flatten
-
-# 3. Get the term string from either --term or --term-file
-term_string = ""
-if args.term:
-    term_string = args.term
-else: # args.term_file must be set
-    try:
-        with open(args.term_file, 'r') as f:
-            term_string = f.read().strip()
-    except FileNotFoundError:
-        print(f"Error: Term file not found: {args.term_file}", file=sys.stderr)
-        sys.exit(1)
-    except Exception as e:
-        print(f"Error reading term file: {e}", file=sys.stderr)
-        sys.exit(1)
-
-if not term_string:
-    print("Error: No term provided or term file was empty.", file=sys.stderr)
-    sys.exit(1)
+# --- Validation ---
+if not args.substitution_file:
+    # If -s is NOT given, the old arguments are required.
+    if not args.rule_file:
+        parser.error("argument 'rule_file' is required (or use -s)")
+    if not args.term and not args.term_file:
+        parser.error("one of the arguments -T/--term or -F/--term-file is required (or use -s)")
+# ------------------
 
 
 class Formula:
@@ -103,18 +98,6 @@ def parse_formula(s):
     else:
         return Formula(word, []), s
 
-
-# rule_file = "math_term3.p"
-# term = "mul(b, add(zero, mul(x, add(add(add(mul(x, one), sub(pow(y, zero), div(mul(zero, z), pow(a, one)))), div(pow(pow(b, one), one), mul(one, one))), div(mul(d, zero), pow(e, one))))))"
-term,rest = parse_formula(term_string)
-if rest != "":
-    raise Exception("parsing error")
-
-with open(rule_file, "r") as f:
-    data = f.read()
-
-goals = []
-
 def collect_subterms(t, idx):
     if idx > 0 and len(t.args) == 0:
         return idx, t.id
@@ -128,67 +111,181 @@ def collect_subterms(t, idx):
     goals.append(f'cnf(goal,axiom, {name} = {subterm}).')
     return current_idx, name
 
-if flatten:
-    collect_subterms(term, 0)
-else:
-    goals.append('cnf(goal,axiom, goal0 = '+str(term)+').')
+def replace(term_str, old, new):
+    term,rest = parse_formula(term_str)
+    assert rest == ""
+    new_term,rest = parse_formula(new)
+    assert rest == ""
+    def replace_rec(t):
+        if t.id == old and len(t.args) == 0:
+            return new_term
+        else:
+            new_args = [replace_rec(arg) for arg in t.args]
+            return Formula(t.id, new_args)
+    replaced = replace_rec(term)
+    return str(replaced)
 
-goals.append('cnf(goal,conjecture, zero = one).')
-print("Generated goals:")
-for g in goals:
-    print(" ", g)
-# sys.exit(0)
+# -----------------------------------------------------------------
+# Main script logic
+# -----------------------------------------------------------------
 
-data += "\n"+"\n".join(goals) + "\n"
-
-# print(data)
-
-# run twee.sh with data as input
-proc = subprocess.Popen(["./twee.sh", str(timeout), "-"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-out, err = proc.communicate(input=data.encode())
-
-output = out.decode()
-limiter="Gave up on reaching the given resource limit"
-if limiter in output:
-    output = output.split(limiter)[1]
-else:
-    limiter="Goal 1 (goal): zero = one."
-    output = output.split(limiter)[1]
-lines = output.split("\n")
-# lines = [line for line in lines if "goal" in line]
-# subst_set = {}
 subst_set = []
-for line in lines:
-    # print(line)
-    # if "->" not in line:
-    #     continue
-    if "goal" not in line:
-        continue
-    # remove "\d+\. " at start of line
-    line = re.sub(r"^\s*\d+\.\s+", "", line)
-    if "<->" in line:
-        lhs, rhs = line.split(" <-> ")
-    elif "->" in line:
-        lhs, rhs = line.split(" -> ")
-    else:
-        continue
-    
-    lhs = lhs.strip()
-    rhs = rhs.strip()
-    if lhs == rhs:
-        continue
-    # only add if one side is pattern goal\d+
-    if re.match(r'goal\d+', lhs) or re.match(r'goal\d+', rhs):
-        subst_set.append((lhs, rhs))
-    
-# remove if no base (not either side a variable)
-# subst_set = [(lhs, rhs) for lhs, rhs in subst_set if "(" not in lhs or "(" not in rhs]
-
 pattern = re.compile(r'goal\d+')
+
+if args.substitution_file:
+    # --- PATH 1: Load substitutions from file ---
+    print(f"Loading substitutions from {args.substitution_file}...")
+    try:
+        with open(args.substitution_file, 'r') as f:
+            lines = f.readlines()
+            # skip all lines until we find a line starting with "Substitutions found:"
+            # end at line Resolving
+            start_idx = 0
+            end_idx = len(lines)
+            for i, line in enumerate(lines):
+                if line.startswith("Substitutions found:"):
+                    start_idx = i + 1
+                if line.startswith("Resolving"):
+                    end_idx = i
+                    break
+            lines = lines[start_idx:end_idx]
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Parse the "lhs -> rhs" or "lhs <-> rhs" format
+                if "<->" in line:
+                    lhs, rhs = line.split(" <-> ")
+                elif "->" in line:
+                    lhs, rhs = line.split(" -> ")
+                else:
+                    print(f"Warning: Skipping malformed line in substitution file: {line}", file=sys.stderr)
+                    continue
+                
+                lhs = lhs.strip()
+                rhs = rhs.strip()
+                
+                if lhs == rhs:
+                    continue
+                
+                # only add if one side is pattern goal\d+
+                if pattern.match(lhs) or pattern.match(rhs):
+                    subst_set.append((lhs, rhs))
+                else:
+                    print(f"Warning: Skipping line (no goal pattern): {line}", file=sys.stderr)
+
+    except FileNotFoundError:
+        print(f"Error: Substitution file not found: {args.substitution_file}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error reading substitution file: {e}", file=sys.stderr)
+        sys.exit(1)
+
+else:
+    # --- PATH 2: Original logic, run Twee ---
+
+    # 2. Get the rule file and timeout from parsed args
+    rule_file = args.rule_file
+    timeout = args.timeout
+    flatten = args.no_flatten
+
+    # 3. Get the term string from either --term or --term-file
+    term_string = ""
+    if args.term:
+        term_string = args.term
+    else: # args.term_file must be set
+        try:
+            with open(args.term_file, 'r') as f:
+                term_string = f.read().strip()
+        except FileNotFoundError:
+            print(f"Error: Term file not found: {args.term_file}", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error reading term file: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    if not term_string:
+        print("Error: No term provided or term file was empty.", file=sys.stderr)
+        sys.exit(1)
+
+    term,rest = parse_formula(term_string)
+    if rest != "":
+        raise Exception("parsing error")
+
+    with open(rule_file, "r") as f:
+        data = f.read()
+
+    goals = []
+
+    if flatten:
+        collect_subterms(term, 0)
+    else:
+        goals.append('cnf(goal,axiom, goal0 = '+str(term)+').')
+
+    goals.append('cnf(goal,conjecture, zero = one).')
+    print("Generated goals:")
+    for g in goals:
+        print(" ", g)
+    # sys.exit(0)
+
+    data += "\n"+"\n".join(goals) + "\n"
+
+    # print(data)
+
+    # run twee.sh with data as input
+    print(f"Running Twee with timeout={timeout}s...")
+    proc = subprocess.Popen(["./twee.sh", str(timeout), "-"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = proc.communicate(input=data.encode())
+
+    output = out.decode()
     
-print("Substitutions found:")
+    if True:
+        limiter="Goal 1 (goal): zero = one."
+        if limiter not in output:
+            print("Error: Could not find Twee output limiter. Twee may have failed.", file=sys.stderr)
+            print("\n--- Twee stdout: ---", file=sys.stderr)
+            print(out.decode(), file=sys.stderr)
+            print("\n--- Twee stderr: ---", file=sys.stderr)
+            print(err.decode(), file=sys.stderr)
+            sys.exit(1)
+            
+        output = output.split(limiter)[1]
+        
+    lines = output.split("\n")
+    # lines = [line for line in lines if "goal" in line]
+    # subst_set = {}
+    
+    for line in lines:
+        # print(line)
+        # if "->" not in line:
+        #     continue
+        if "goal" not in line:
+            continue
+        # remove "\d+\. " at start of line
+        line = re.sub(r"^\s*\d+\.\s+", "", line)
+        if "<->" in line:
+            lhs, rhs = line.split(" <-> ")
+        elif "->" in line:
+            lhs, rhs = line.split(" -> ")
+        else:
+            continue
+        
+        lhs = lhs.strip()
+        rhs = rhs.strip()
+        if lhs == rhs:
+            continue
+        # only add if one side is pattern goal\d+
+        if re.match(r'goal\d+', lhs) or re.match(r'goal\d+', rhs):
+            subst_set.append((lhs, rhs))
+    
+# -----------------------------------------------------------------
+# Resolver logic (common to both paths)
+# -----------------------------------------------------------------
+    
+print("\nSubstitutions found:")
 for lhs, rhs in subst_set:
-    print(f"{lhs} -> {rhs}")
+    print(f"  {lhs} -> {rhs}")
 
 # we have for each goal one or multiple substitutions (potentially just other goal)
 # we want to find a order (starting at goal0) to resolve these substitutions to reach a final term
@@ -208,27 +305,13 @@ for lhs, rhs in subst_set:
         heapq.heappush(queue, (len(lhs), rhs, lhs))
     else:
         remaining.add((lhs, rhs))
-    
-def replace(term_str, old, new):
-    term,rest = parse_formula(term_str)
-    assert rest == ""
-    new_term,rest = parse_formula(new)
-    assert rest == ""
-    def replace_rec(t):
-        if t.id == old and len(t.args) == 0:
-            return new_term
-        else:
-            new_args = [replace_rec(arg) for arg in t.args]
-            return Formula(t.id, new_args)
-    replaced = replace_rec(term)
-    return str(replaced)
         
 while queue:
     _, g, t = heapq.heappop(queue)
-    print(f"Resolving {g} -> {t}")
     if g in subst:
         # we already found a smaller term for this goal
         continue
+    print(f"Resolving {g} -> {t}")
     subst[g] = t
     new_remaining = set()
     for lhs, rhs in remaining:
@@ -239,6 +322,8 @@ while queue:
         # new_rhs = rhs.replace(g, t)
         new_lhs = replace(lhs, g, t)
         new_rhs = replace(rhs, g, t)
+        # if (lhs != new_lhs or rhs != new_rhs) and (g == "goal80"):
+        #     print(f"  Updated: {lhs} -> {rhs}  to  {new_lhs} -> {new_rhs}")
         if not pattern.search(new_rhs):
             heapq.heappush(queue, (len(new_rhs), new_lhs, new_rhs))
         elif not pattern.search(new_lhs):
@@ -252,4 +337,23 @@ for lhs, rhs in subst.items():
     print(f"  {lhs} -> {rhs}")
 
 print("\nResolved term for goal0:")
-print(subst["goal0"])
+if "goal0" in subst:
+    print(subst["goal0"])
+else:
+    print("Error: Could not resolve goal0.")
+    if not args.substitution_file and "goal0" not in [l for l,r in subst_set] + [r for l,r in subst_set]:
+         print("Note: 'goal0' was not found in Twee output.")
+    elif not subst_set:
+         print("Note: No substitutions were found or provided.")
+    else:
+         print("Note: Resolution may have failed or goal0 was not in the set.")
+         print("Best effort result:")
+         goals = []
+         for lhs, rhs in remaining:
+             if lhs == "goal0":
+                goals.append(rhs)
+             elif rhs == "goal0":
+                goals.append(lhs)
+                #  print(f"  {lhs} -> {rhs}")
+         if goals:
+            print(min(goals, key=len))
