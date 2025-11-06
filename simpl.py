@@ -106,19 +106,6 @@ def parse_formula(s):
     else:
         return Formula(word, []), s
 
-def collect_subterms(t, idx):
-    if idx > 0 and len(t.args) == 0:
-        return idx, t.id
-    current_idx = idx+1
-    new_args = []
-    for arg in t.args:
-        current_idx, subterm = collect_subterms(arg, current_idx)
-        new_args.append(subterm)
-    name = f"goal{idx}"
-    subterm = Formula(t.id, new_args)
-    goals.append(f'cnf(goal,axiom, {name} = {subterm}).')
-    return current_idx, name
-
 def replace(term, old, new_term):
     # term,rest = parse_formula(term_str)
     # assert rest == ""
@@ -236,6 +223,25 @@ else:
         data = f.read()
 
     goals = []
+    
+    created_subterms = {}
+    
+    def collect_subterms(t, idx):
+        if idx > 0 and len(t.args) == 0:
+            return idx, t.id
+        if str(t) in created_subterms:
+            return created_subterms[str(t)]
+        current_idx = idx+1
+        new_args = []
+        for arg in t.args:
+            current_idx, subterm = collect_subterms(arg, current_idx)
+            new_args.append(subterm)
+        name = f"goal{idx}"
+        subterm = Formula(t.id, new_args)
+        subst_set.append((name, str(subterm)))
+        goals.append(f'cnf(goal,axiom, {name} = {subterm}).')
+        created_subterms[str(t)] = (current_idx, name)
+        return current_idx, name
 
     if flatten:
         collect_subterms(term, 0)
