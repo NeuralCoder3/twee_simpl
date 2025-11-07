@@ -227,10 +227,15 @@ else:
     created_subterms = {}
     
     def collect_subterms(t, idx):
-        if idx > 0 and len(t.args) == 0:
-            return idx, t.id
+        # use index,
+        # return next free index and the constant representing t
         if str(t) in created_subterms:
-            return created_subterms[str(t)]
+            # no index used, so idx is the next free
+            return idx, created_subterms[str(t)]
+        if idx > 0 and len(t.args) == 0:
+            # no index used, use term directly
+            return idx, t.id
+        # idx is reserved for this term
         current_idx = idx+1
         new_args = []
         for arg in t.args:
@@ -239,8 +244,9 @@ else:
         name = f"goal{idx}"
         subterm = Formula(t.id, new_args)
         subst_set.append((name, str(subterm)))
+        goals.append(f'% {name} represents {t}')
         goals.append(f'cnf(goal,axiom, {name} = {subterm}).')
-        created_subterms[str(t)] = (current_idx, name)
+        created_subterms[str(t)] = name
         return current_idx, name
 
     if flatten:
@@ -260,10 +266,21 @@ else:
 
     # run twee.sh with data as input
     print(f"Running Twee with timeout={timeout}s...")
+    # if DEBUG env variable is set, print data to file twee_input.p
+    import os
+    if os.getenv("DEBUG"):
+        with open("twee_input.p", "w") as f:
+            f.write(data)
+        print("Wrote Twee input to twee_input.p")
+        
     proc = subprocess.Popen(["./twee.sh", str(timeout), "-"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = proc.communicate(input=data.encode())
 
     output = out.decode()
+    if os.getenv("DEBUG"):
+        with open("twee_output.txt", "w") as f:
+            f.write(output)
+        print("Wrote Twee output to twee_output.txt")
     
     if True:
         limiter="Goal 1 (goal): zero = one."
