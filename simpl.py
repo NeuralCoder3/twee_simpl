@@ -333,14 +333,22 @@ def is_ground(term):
 def is_goal(term):
     return len(term.args) == 0 and pattern.match(term.id)
 
+def contains_label(term, label):
+    if term.id == label:
+        return True
+    return any(contains_label(arg, label) for arg in term.args)
+
 # filter recursive ones
-new_subst_set = []
-for lhs, rhs in subst_set:
-    if (pattern.match(lhs) and lhs in str(rhs)) or (pattern.match(rhs) and rhs in str(lhs)):
-        # print(f"Skipping recursive substitution: {lhs} -> {rhs}")
-        continue
-    new_subst_set.append((lhs, rhs))
-subst_set = new_subst_set
+# new_subst_set = []
+# for lhs, rhs in subst_set:
+#     # if (pattern.match(lhs) and lhs in str(rhs)) or (pattern.match(rhs) and rhs in str(lhs)):
+#     #     # print(f"Skipping recursive substitution: {lhs} -> {rhs}")
+#     #     continue
+#     if (pattern.match(lhs) and contains_label(rhs, lhs.id)) or \
+#         (pattern.match(rhs) and contains_label(lhs, rhs.id)):
+#         continue
+#     new_subst_set.append((lhs, rhs))
+# subst_set = new_subst_set
 # sys.exit(0)
     
 print("\nSubstitutions found:")
@@ -361,6 +369,9 @@ for lhs_str, rhs_str in subst_set:
     assert rest == ""
     rhs, rest = parse_formula(rhs_str)
     assert rest == ""
+    if (pattern.match(lhs.id) and contains_label(rhs, lhs.id)) or \
+        (pattern.match(rhs.id) and contains_label(lhs, rhs.id)):
+        continue
     new_subst_set.append((lhs, rhs))
 subst_set = new_subst_set
     
@@ -376,7 +387,10 @@ for lhs, rhs in subst_set:
         heapq.heappush(queue, (lhs.size(), rhs.id, lhs))
     else:
         remaining.add((lhs, rhs))
-        
+# print("initially remaining substitutions:")
+# for lhs, rhs in remaining:
+#     print(f"  {lhs} -> {rhs}")
+
 while queue:
     _, g, t = heapq.heappop(queue)
     assert is_ground(t)
